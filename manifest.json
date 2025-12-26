@@ -1,0 +1,42 @@
+{
+  "name": "Vodohospodářské Areály - Mapa",
+  "short_name": "VH Areály",
+  "description": "PWA aplikace pro správu vodohospodářských areálů v Jihočeském kraji",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1e40af",
+  "theme_color": "#1e40af",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["utilities", "productivity"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Zobrazit mapu",
+      "short_name": "Mapa",
+      "description": "Otevřít interaktivní mapu areálů",
+      "url": "/",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Statistiky",
+      "short_name": "Stats",
+      "description": "Zobrazit statistiky a analýzy",
+      "url": "/?view=stats",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
