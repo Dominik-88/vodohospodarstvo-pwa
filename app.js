@@ -300,4 +300,300 @@ function getUserLocation() {
   );
 }
 
-// Pokračování v dalším souboru...
+// ============================================
+// HEATMAPA
+// ============================================
+function toggleHeatmap() {
+  if (isHeatmapVisible) {
+    map.removeLayer(heatmapLayer);
+    isHeatmapVisible = false;
+    showNotification('Heatmapa skryta', 'info');
+  } else {
+    const heatData = filteredAreas.map(area => [
+      area.lat,
+      area.lng,
+      area.vymera / 10000
+    ]);
+    
+    heatmapLayer = L.heatLayer(heatData, {
+      radius: 25,
+      blur: 15,
+      maxZoom: 10,
+      gradient: {
+        0.0: 'blue',
+        0.5: 'yellow',
+        1.0: 'red'
+      }
+    }).addTo(map);
+    
+    isHeatmapVisible = true;
+    showNotification('✅ Heatmapa zobrazena', 'success');
+  }
+}
+
+// ============================================
+// CLUSTERING
+// ============================================
+function toggleClustering() {
+  isClusteringEnabled = !isClusteringEnabled;
+  loadAreas();
+  showNotification(
+    isClusteringEnabled ? '✅ Clustering zapnut' : 'Clustering vypnut',
+    'info'
+  );
+}
+
+// ============================================
+// EXPORT DO CSV
+// ============================================
+function exportToCSV() {
+  const headers = ['Okres', 'Název', 'Kategorie', 'Výměra (m²)', 'Oplocení (bm)', 'Latitude', 'Longitude'];
+  const rows = filteredAreas.map(area => [
+    area.okres,
+    area.nazev,
+    area.kategorie || 'Bez kategorie',
+    area.vymera,
+    area.oploceni,
+    area.lat,
+    area.lng
+  ]);
+  
+  let csv = headers.join(',') + '\n';
+  rows.forEach(row => {
+    csv += row.join(',') + '\n';
+  });
+  
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `arealy_export_${new Date().toISOString().split('T')[0]}.csv`;
+  link.click();
+  
+  showNotification('✅ Export dokončen', 'success');
+}
+
+// ============================================
+// STATISTIKY - GRAFY
+// ============================================
+function showStatistics() {
+  document.getElementById('statsModal').classList.remove('hidden');
+  
+  const catCtx = document.getElementById('categoryChart').getContext('2d');
+  new Chart(catCtx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Kategorie I.', 'Kategorie II.', 'Bez kategorie'],
+      datasets: [{
+        data: [
+          areasData.filter(a => a.kategorie === 'I.').length,
+          areasData.filter(a => a.kategorie === 'II.').length,
+          areasData.filter(a => !a.kategorie).length
+        ],
+        backgroundColor: ['#dc2626', '#f59e0b', '#6b7280']
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'bottom' }
+      }
+    }
+  });
+  
+  const districts = {};
+  areasData.forEach(area => {
+    districts[area.okres] = (districts[area.okres] || 0) + 1;
+  });
+  
+  const distCtx = document.getElementById('districtChart').getContext('2d');
+  new Chart(distCtx, {
+    type: 'bar',
+    data: {
+      labels: Object.keys(districts),
+      datasets: [{
+        label: 'Počet areálů',
+        data: Object.values(districts),
+        backgroundColor: '#3b82f6'
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false }
+      }
+    }
+  });
+  
+  const top10 = [...areasData]
+    .sort((a, b) => b.vymera - a.vymera)
+    .slice(0, 10);
+  
+  const areaCtx = document.getElementById('areaChart').getContext('2d');
+  new Chart(areaCtx, {
+    type: 'bar',
+    data: {
+      labels: top10.map(a => a.nazev.substring(4, 20)),
+      datasets: [{
+        label: 'Výměra (m²)',
+        data: top10.map(a => a.vymera),
+        backgroundColor: '#10b981'
+      }]
+    },
+    options: {
+      responsive: true,
+      indexAxis: 'y',
+      plugins: {
+        legend: { display: false }
+      }
+    }
+  });
+}
+
+// ============================================
+// OPTIMALIZACE TRASY
+// ============================================
+function optimizeRoute() {
+  if (!userLocation) {
+    showNotification('⚠️ Nejprve zjistěte svou polohu', 'warning');
+    return;
+  }
+  
+  const route = [userLocation];
+  const remaining = [...filteredAreas];
+  
+  while (remaining.length > 0) {
+    const current = route[route.length - 1];
+    let nearest = null;
+    let minDist = Infinity;
+    
+    remaining.forEach((area, index) => {
+      const dist = calculateDistance(current.lat, current.lng, area.lat, area.lng);
+      if (dist < minDist) {
+        minDist = dist;
+        nearest = index;
+      }
+    });
+    
+    route.push(remaining[nearest]);
+    remaining.splice(nearest, 1);
+  }
+  
+  const routeCoords = route.map(point => [point.lat, point.lng]);
+  L.polyline(routeCoords, {
+    color: '#3b82f6',
+    weight: 3,
+    opacity: 0.7
+  }).addTo(map);
+  
+  let totalDist = 0;
+  for (let i = 0; i < route.length - 1; i++) {
+    totalDist += calculateDistance(
+      route[i].lat, route[i].lng,
+      route[i+1].lat, route[i+1].lng
+    );
+  }
+  
+  showNotification(`✅ Trasa optimalizována: ${totalDist.toFixed(1)} km`, 'success');
+}
+
+// ============================================
+// AUTENTIZACE
+// ============================================
+function initAuth() {
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      document.getElementById('userInfo').classList.remove('hidden');
+      document.getElementById('loginPrompt').classList.add('hidden');
+      document.getElementById('userName').textContent = user.displayName || 'Uživatel';
+      document.getElementById('userEmail').textContent = user.email;
+      document.getElementById('userInitial').textContent = (user.displayName || user.email)[0].toUpperCase();
+    } else {
+      document.getElementById('userInfo').classList.add('hidden');
+      document.getElementById('loginPrompt').classList.remove('hidden');
+    }
+  });
+}
+
+function login() {
+  const email = prompt('Email:');
+  const password = prompt('Heslo:');
+  
+  if (email && password) {
+    signInWithEmailAndPassword(auth, email, password)
+      .then(() => showNotification('✅ Přihlášení úspěšné', 'success'))
+      .catch(err => showNotification('❌ Chyba: ' + err.message, 'error'));
+  }
+}
+
+function logout() {
+  signOut(auth)
+    .then(() => showNotification('✅ Odhlášení úspěšné', 'success'))
+    .catch(err => showNotification('❌ Chyba: ' + err.message, 'error'));
+}
+
+// ============================================
+// NOTIFIKACE
+// ============================================
+function showNotification(message, type = 'info') {
+  const colors = {
+    success: 'bg-green-500',
+    error: 'bg-red-500',
+    warning: 'bg-yellow-500',
+    info: 'bg-blue-500'
+  };
+  
+  const notification = document.createElement('div');
+  notification.className = `fixed top-4 right-4 ${colors[type]} text-white px-6 py-3 rounded-lg shadow-lg z-[9999] transition-opacity`;
+  notification.textContent = message;
+  
+  document.body.appendChild(notification);
+  
+  setTimeout(() => {
+    notification.style.opacity = '0';
+    setTimeout(() => notification.remove(), 300);
+  }, 3000);
+}
+
+// ============================================
+// EVENT LISTENERS
+// ============================================
+function initEventListeners() {
+  document.getElementById('searchInput').addEventListener('input', filterAreas);
+  document.getElementById('districtFilter').addEventListener('change', filterAreas);
+  document.getElementById('categoryFilter').addEventListener('change', filterAreas);
+  document.getElementById('sortBy').addEventListener('change', filterAreas);
+  document.getElementById('resetFilters').addEventListener('click', () => {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('districtFilter').value = '';
+    document.getElementById('categoryFilter').value = '';
+    document.getElementById('sortBy').value = 'name';
+    filterAreas();
+  });
+  
+  document.getElementById('geolocateBtn').addEventListener('click', getUserLocation);
+  document.getElementById('toggleHeatmap').addEventListener('click', toggleHeatmap);
+  document.getElementById('toggleClustering').addEventListener('click', toggleClustering);
+  document.getElementById('exportBtn').addEventListener('click', exportToCSV);
+  document.getElementById('showStatsBtn').addEventListener('click', showStatistics);
+  document.getElementById('closeStatsBtn').addEventListener('click', () => {
+    document.getElementById('statsModal').classList.add('hidden');
+  });
+  document.getElementById('routeOptimizeBtn').addEventListener('click', optimizeRoute);
+  
+  document.getElementById('loginBtn').addEventListener('click', login);
+  document.getElementById('logoutBtn').addEventListener('click', logout);
+}
+
+// ============================================
+// GLOBÁLNÍ FUNKCE
+// ============================================
+window.showRouteToArea = (lat, lng) => {
+  if (userLocation) {
+    const url = `https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lng}&destination=${lat},${lng}`;
+    window.open(url, '_blank');
+  } else {
+    showNotification('⚠️ Nejprve zjistěte svou polohu', 'warning');
+  }
+};
+
+console.log('✅ Aplikace připravena');
